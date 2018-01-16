@@ -1,0 +1,193 @@
+/**
+ * Pomelo 框架分析
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 3/2/17
+ * Modified On 	: 3/2/17
+ */
+
+
+Pomelo Framework
+================
+https://github.com/NetEase/pomelo/wiki/Pomelo-Framework
+以下内容均有介绍！
+
+Session (pomelo built in)
+==========================
+Search in folders "sessionService" or "sessionService.js"
+
+sessionService.js is a internal service provided by pomelo.
+It maintains the internal session for each client connection.
+Session Service is created by session component and is only AVAILABLE in frontend servers.
+
+
+connector.entryHandler.entry handles session generating and register chat status:
+	it first calls app.get('sessionService').kick(uid, cb) to kick all the sessoins offline usder the user id.
+!IMPORTANT
+==> As a result, only one user is allowed to login at one time. In other words, 新建一个客户连接时，会挤掉之前在线的登录连接。
+
+
+
+Session class is defined in the same file, "sessionService.js".
+
+Session maintains the relationship between client connection and user information.
+There is a session associated with each client connection. And it should bind to a user id
+after the client passes the identification.
+
+Session is created in frontend server and should not be access in handler.
+There is a proxy class called BackendSession in backend servers, and a class FrontendSessoin in frontend servers.
+
+SessionService.sendMessage(sid, msg)	sends message to the client by session id.
+Internally, it calls function send(service, session, msg), 
+which inernally calls session.send(msg).
+In the lower level for Session.prototype.send = function(msg), what happens is 
+this.__socket__.send(msg).
+
+Session.prototype.closed = function(reason)
+is the closed callback for the session which would disconnect client in next tick.
+Internally, after freshing the property values of a session, the socket emits a 'closing' event,
+and to give a chance to send disconnect message to client, the socket disconnects in next tick.
+
+
+FrontendSession class is defined in the same file, "sessionService.js".
+
+
+BackendSession (pomelo built in)
+================================
+Search in folders "backendSession" or "backendSession.js" + "backendSessionService.js"
+Backend Session is part of session used in backend servers in pomelo framework.
+
+backendSession Service maintains backend sessions and the communication with frontend servers.
+
+BackendSessionService  would be created in each server process and maintains
+backend sessions for current process and communicates with the relative frontend servers.
+
+
+BackendSeesion class is defined in the same file, "backendSessionService.js".
+
+BackendSession is the proxy for the frontend internal session passed to handlers and 
+it helps to keep the key/value pairs for the server locally.
+Internal session locates in frontend server and should not be accessed directly.
+
+The main operation on backend session should be read and any changes happen in backend
+session is lcoal and would be discarded in next request. (!IMPORTANT 3/2/17 ME ASKS: WHY is it designed in this way?)
+You have to push the changes to the frontend manually if necessary. Any push would overwrite the last push
+of the same key silently and teh changes would be saw in next request.
+And you have to make sure the transaction outside if you would push the session
+concurrently in different processes. (!IMPORTANT write to frontend session concurrently does not handle TRANSACTION!)
+
+!IMPORTANT 3/2/17
+Q: In what situation, TRANSACTION is a must?
+==> Trial 1: 继续看下面的BackendSession方法定义。在与多个服务器交互，需要先后绑定到多个server... （想不下去了）
+
+Q2: Whayt session is designed in such a way, frontend/backend session?
+==> Trial 1: google online
+
+Q: Howd does backendSession and session gets linked? or they do not link or map to each other, since session is bound to uid?
+==> 参考1: http://www.cnblogs.com/fuland/p/4000345.html
+	"在后端服务器接收到请求后，由BackendSessionService根据前端服务器rpc的参数，进行创建。对BackendSessionService的每一次方法调用实际上都会生成一个远程调用"
+
+Channel (pomelo built in)
+==========================
+Search in folders "channelService" or search file "channelService.js".
+
+ChannelService
+
+createChannel(name)
+getChannel(name, create)  @param create {Boolean}  if true, create channel
+destroyChannel(name)
+pushMessageByUids(route, msg, uids, opts, cb)  @param uids {Array} the receiver info list, [{uid: userId, sid: frontendServerId}]
+broadcast(stype, route, msg, opts, cb)
+
+pushMessage, broadcast utilizes channelRemote class (channelRemote.js), which eventually calls connector.send()
+
+
+Channel Class is defined in the same file (channelService.js)
+
+	this.groups = {}		// groupmap for uids. key: serverId, value: [uid]
+	this.records = {}		// member records. key: uid, value: {frontendServerId, uid}
+
+
+Q1: Channel.add(uid, sid) and Channel.leave(uid, sid) sid is FRONTEND server id. Does this mean backend server does not have channel? 
+==> Area server has its channel? Yes. app/domain/area/area.js 
+==> Find where entities get added to the channel of the area 
+==> when add entity to area: this.getChannel().add(e.userId, e.serverId)
+==> Q1.1: where is this e.serverId defined?
+==> Trial A: maybe 'frontendServerId' means the connector id this request?
+==>		不对！area生成的时候，还没有请求。如果channel是跟着服务器来的，那么 ===>! ==>
+==> Tial2 A: 这里的frontendServerId指的是user绑定的serverId？
+==> Q1.2: 还是不能解释e.serverId 实体serverId，如果entity.type === MOB, ITEM, EQUIPMENT ... 这些没有连connector服务器，也就是没有所谓的frontend server
+==> Trial: 参考 Pomelo Framework
+	https://github.com/NetEase/pomelo/wiki/Pomelo-Framework
+	里面有讲到服务器类型frontend/backend，和请求/响应流程
+
+Channel分两类: 具名channel和匿名channel
+	具名channel：创建时指定名字。适用于需要长期维护的订阅关系，如聊天频道服务、组队频道等
+	匿名channel：无需指定名字，无需实例返回，调用时需要指定玩家id集合。适用于成员变化频率较大、临时单词消息推送，如：场景API消息的推送。
+
+消息推送
+	两种channel底层的消息推送机制相似。
+	Step 1. channel所在的服务器进程将消息推送到玩家客户端所连接的frontend进程
+	Step 2. frontend进程将消息推送到玩家客户端
+
+	Step 1的实现依赖于底层RPC框架。
+	！优点：
+	推送前，会根据玩家所在的frontend服务器id进行分组，一条消息只会往同一个frontend服务器推送一次，不会有广播泛滥问题。
+
+Q2: 事件的监听
+	有的事件触发是通过 object.emit('eventname', {})，
+	有的事件是通过channel发送消息，指定route: 'onEventName'
+	两种应用场景分析？
+==> A: channel提供了将消息推送给客户端的途径，event的事件有些只发生在服务器不需要提供给客户端，这时事件的触发使用emit
+==> TODO: 从代码验证猜想
+
+
+RPC
+===
+RPC调用原理 : https://github.com/NetEase/pomelo/wiki/rpc%E8%B0%83%E7%94%A8%E5%8E%9F%E7%90%86
+
+Implemented with proxy component and remote component.
+
+PRC Client
+----------
+Proxy component - create rpc client 
+Rpc client listens to server add, server removal, server replace events. when events triggered, 
+"proxy组件会根据相应事件信息对服务器代理对象进行相应动态变化"。
+(Q: 服务器代理对象 是什么？A: 看下面的例如)
+例如，当有新的服务器增加时，proxy组件会增加该服务器的代理对象；当有服务器被移除后，proxy组件会移除该服务器的代理对象。
+在proxy组件启动完成时会将rpc client生成的代理对象挂载到app.rpc下，这样开发者在进行rpc调用时就可以匹配到对应的代理对象，从而通过rpc client进行相应的rpc调用。
+
+						------------							------------------
+						|	proxy 	|							|	rpc invoke	 |
+						------------	  						------------------
+							  |											|
+							  |	session, message 						|
+							 \|/										|
+						--------------									|
+						|	router 	 |									|
+						--------------									|
+							  |											|
+							  | sid, msg 								|
+							 \|/									   \|/
+						----------------------------------------------------- 											
+						|					mail station 					|
+						----------------------------------------------------- 											
+							  |				|						|
+							  | msg 		| msg 					| msg 
+							 \|/		   \|/					   \|/
+							
+							mail box 	mail box 				mail box
+
+RPC service provider
+--------------------
+
+	acceptor 		<---->		mail box
+
+	dispatch 		
+
+	remote services
+
+Mailbox
+=======
+RPC中用来屏蔽底层通讯协议细节，1个mail box对应1个远程服务器连接。
+

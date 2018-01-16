@@ -1,0 +1,99 @@
+/**
+ * Created By 	: Xumean M.
+ * Created On 	: 3/13/17 Mon.
+ * Modified On 	: 3/14/17 Tue.
+ */
+
+Duration: 3/12/17 - 3/13/17 Sun - Mon
+
+Demo Hack
+
+Goal:
+demo 的内容是同步若干手机浏览器的位置和手机姿态
+
+资料：
+1.地图API示例：http://developer.baidu.com/map/jsdemo.htm#d0_5
+2.DeviceMotionEvent.acceleration：https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent/acceleration
+
+实现：
+1.服务器部分:
+	采用socket.io作为数据同步转发架构。
+	服务器只接收'update', 'disconnect'事件。
+	在用户连接到socket.io时，服务器首先发送给新加入连接的用户当前连接到服务端的所有用户信息usersData，格式为{socket.id: userPosition, socket.id2: user2Postion, ...}。
+	之后添加该连接用户的信息，usersData[socket.id] = {}。
+	在接收到'update'事件时，如果收到数据中有pos字段，则更新usersData[data.id] = data.pos。
+	服务端收到'disconnect'事件时，删除usersData[socket.id]。
+
+	服务器定时(每隔1s)对所有连接者广播连接到socket.io server的device的信息(pc 被过滤掉，因为没有update pos)，格式{socket.id: userPosition, socket.id2: user2Postion, ...}
+
+	git: https://coding.net/u/snoworld/p/socketio/git
+2.客户端：
+	注意！百度地图的API在创建多个位置标志marker时，必须一次性以for loop生成marker并添加到地图。在demo上尝试在forloop中添加sleep(1000)，地图只有在所有marker被创建并添加到地图后才刷新地图。
+	==> 百度地图不支持实时添加位置标志，本例是通过服务器定时广播来实现的(如上所述)
+
+3.完整代码：
+	git: https://coding.net/u/Tunan/p/SocketPhones/git
+
+
+4.优化：
+4.1架构更改
+				Client 													Server
+																	usersData = {}
+																	numDevice = -1
+			io.connect() 				connect request
+									--------------------->
+																	new connection:
+																		emit('new connection', usersData)
+											usersData
+									<---------------------
+		get connected userList
+
+		at FPS 60, update to server
+										{id, pos, vec3}
+									----------------------> 		update:
+																		更新usersData
+																		usersData[id]['pos'] = pos // only when pos changes
+																		usersData[id]['vec3'] = vec3
+
+																		如果numDevice == -1 (被重置), 启动setInterval, at 30Hz
+
+				disonnect
+									------------------------> 		disconnect:
+																		清理usersData
+																		更新numDevice--
+
+
+																	setInterval
+																	每次执行的函数内容：
+																		io.emit('udpate map', usersData)
+																		如果已经没有device连接到服务器，重置numDevice = -1
+
+4.2 优化效果:
+server only broadcast when num of online devices > 0
+
+d: size of messeage sent during one update ()
+client -> server: d
+server -> client: n x d (only happens once when connection established)
+server broadcast -> client: n x (n x d)
+
+Server Bandwidth:
+client update at 60Hz, server broadcast at 30Hz, have n clients
+In 1 sec, recieved data amount = 60 * n * d ~ O(n)
+In 1 sec, sent data amount = 30 * n * n * d ~ O(n^2)
+
+Assume available bandwidth is 1G bps = 1M kbps = 1K Mbps, 1d = 1KB = 8Kb, 
+then at most handler 1M / 8K = 125 broadcast per sec ~ 11 users. 
+
+"The bandwidth usage will also depend on which Socket.IO transport you're using, and the heartbeat interval of your application." - http://stackoverflow.com/questions/18907591/socket-io-server-performance-and-bandwidth-usage
+
+4.3 ToDo:
+降低server sent data BW O(n^2)
+
+想法：
+根据数据更新频率分别广播 - 并不解决O(n^2)
+数据主要有两种：位置数据(静态，现在为止，当物体变成汽车时需要考虑)和手机姿态数据
+	1) 对于静态数据，只需要广播两次: 生成、销毁
+	2）对于变化剧烈的手机姿态数据，因为如果不点开地图上的标志，就不会看到手机姿态。
+		假设：点开地图标志并且弹窗在浏览器可见范围内的用户稀疏
+		所以只广播姿态数据给弹窗打开，并且认定为有效（弹窗位置不在可视范围内5s内等前端判断条件）
+	3) 当位置信息变为动态，使用AOI。但怎么解决地图放大级别问题。---> multi user Sync on map

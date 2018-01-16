@@ -1,0 +1,25 @@
+1. git ignore modified files (not added yet)
+git update-index --assume-unchanged [files]
+
+2. undo last commit
+	http://stackoverflow.com/questions/927358/how-to-undo-last-commits-in-git
+$ git commit -m "Something terribly misguided"              (1)
+$ git reset HEAD~                                           (2)
+<< edit files as necessary >>                               (3)
+$ git add ...                                               (4)
+$ git commit -c ORIG_HEAD                                   (5)
+
+3. switch branch
+git checkout <newbranch>
+
+4. push a new branch to remote Git repository
+Create a new branch:
+git checkout -b feature_branch_name
+Edit, add and commit your files.
+Push your branch to the remote repository:
+git push -u origin feature_branch_name
+
+5. force delete a local branch
+git branch -D <del_branch_name>
+Delete remote branch
+git push origin :<del_branch_name>

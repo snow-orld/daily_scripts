@@ -1,0 +1,10 @@
+更改IP地址
+
+sudo ifconfig eth0 192.168.239.126 netmask 255.255.255.0
+
+关闭eth0
+sudo ifconfig eth0 down
+
+启动eth0
+sudo ifconfig eth0 up
+

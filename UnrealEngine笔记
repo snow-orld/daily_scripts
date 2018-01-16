@@ -1,0 +1,251 @@
+/**
+ * Uneral Engine 4 Study Notes
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 3/20/17
+ * Modified On 	: 4/16/17
+ */
+
+虚幻引擎4文档
+=============
+术语 
+	https://docs.unrealengine.com/latest/CHN/GettingStarted/Terminology/index.html
+Engine API文档 
+	https://docs.unrealengine.com/latest/INT/API/index.html
+GameFramework API 
+	https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/index.html
+
+Online Beacons
+==============
+https://docs.unrealengine.com/latest/CHN/Gameplay/Networking/OnlineBeacons/index.html
+
+与多人游戏client host rpc相关。
+
+实现多人Vehicle游戏
+===================
+UE4自带的Vehicle项目中有三个NetworkPlayer的玩家进入点。将该项目多人游戏化。
+多人游戏相关资料：
+	1.命令行参数 “网络”
+	https://docs.unrealengine.com/latest/CHN/Programming/Basics/CommandLineArguments/index.html#网络
+	2.网络连接与多人游戏
+	https://docs-origin.unrealengine.com/latest/INT/Gameplay/Networking/Server/index.html
+	3"session"
+	https://wiki.unrealengine.com/Online-Multiplayer#Unreal_Engine_and_Online_Multiplayer_with_the_OnlineSubSystem
+	4.多人连线枪战游戏
+	https://docs.unrealengine.com/latest/CHN/Resources/Showcases/BlueprintMultiplayer/index.html
+	5.运行/测试多人游戏:
+	https://docs.unrealengine.com/latest/CHN/Gameplay/HowTo/Networking/TestMultiplayer/index.html
+
+	Cmd Line:
+	监听服务器	UE4Editor.exe ProjectName MapName?Listen -game
+	专用服务器	UE4Editor.exe ProjectName MapName -server -game -log
+	客户端	UE4Editor.exe ProjectName ServerIP -game
+
+	Start Server:
+	cd D:\Documents\UnrealProjects\
+	C:\Program Files\Epic Games\UE_4.15\Engine\Binaries\Win64\UE4Editor.exe SideScroller\SideScroller.uproject SideScrollerExampleMap_BuiltData?Listen -game
+	or
+	cd C:\Program Files\Epic Games\UE_4.15\Engine\Binaries\Win64
+	UE4Editor.exe D:\Documents\UnrealProjects\SideScroller\SideScroller.uproject SideScrollerExampleMap?Listen -game
+
+	Start Client:
+	cd C:\Program Files\Epic Games\UE_4.15\Engine\Binaries\Win64
+	UE4Editor.exe D:\Documents\UnrealProjects\SideScroller\SideScroller.uproject 127.0.0.1 -game
+
+	添加UE4Editor.exe到环境变量；
+		WINDOS+X ->控制面板->系统和安全->系统->高级系统设置->环境变量
+		系统变量Path下添加变量值 "C:\Program Files\Epic Games\UE_4.15\Engine\Binaries\Win64"
+	
+	运行时 (必须用完全路径指定uproject)
+	UE4Editor D:\Documents\UnrealProjects\Vehicle\Vehicle.uproject VehicleExampleMap?Listen -game
+	UE4Editor D:\Documents\UnrealProjects\Vehicle\Vehicle.uproject 127.0.0.1 -game
+
+	外部ip地址无效 （另外，一个简单的方法可以右键Editor.exe.lnk 添加运行参数 - 试了不好使，问沈州）
+
+	已解决：3/21/17 周蕴嘉和沈州导出了一个客户端D:/Documents/UnrealPorjects/VehicleClient 可以连接周的服务器。xx.exe ip -game
+	(解决方法未知)
+
+Class APawn
+==========
+Pawn.h / APawn API Doc (https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/APawn/index.html)
+
+	Variables
+
+	Type				Name 								Description
+	
+	TSubclassOf<> 		AIControllerClass					Default class to use when pawn is controlled by AI.
+	
+	float 				AllowedYawError						Max difference between pawn's Rotation.Yaw and GetDesiredRotation().Yaw for pawn to be considered as having reached its desired rotation
+
+	EAutoPossessAI		AutoPossessAI						Determines when the Pawn creates and is possessed by an AI Controller (on level start, when spawned, etc).
+
+	TEnumAsByte<>		AutoPossessPlayer					Determines which PlayerController, if any, should automatically possess the pawn when the level starts or when the pawn is spawned.
+
+	float				BaseEyeHeight						Base eye height above collision center.
+
+	uint32: 1			bCanAffectNavigationGeneration		If set to false (default) given pawn instance will never affect navigation generation.
+
+	uint32: 1			bProcessingOutsideWorldBounds		Used to prevent re-entry of OutsideWorldBounds event.
+
+	uint32: 1			bUseControllerRotationPitch			If true, this Pawn's pitch will be updated to match the Controller's ControlRotation pitch, if controlled by a PlayerController.
+
+	uint32: 1			bUseControllerRotationRoll			If true, this Pawn's roll will be updated to match the Controller's ControlRotation roll, if controlled by a PlayerController.
+
+	uint32: 1			bUseControllerRotationYaw			If true, this Pawn's yaw will be updated to match the Controller's ControlRotation yaw, if controlled by a PlayerController.
+
+	FVector				ControllInputVector					Accumulated control input vector, stored in world space.
+
+	AController 		Controller 							Controller currently possessing this Actor
+	-----------			----------							------------------------------------------
+
+	FVector				LastControllInputVector 			The last control input vector that was processed by ConsumeMovementInputVector().
+
+	AController			LastHitBy 							Controller of the last Actor that caused us damange.
+
+	APlayerState 		PlayerState 						If Pawn is possessed by a player, points to his playerstate.
+	------------		-----------							------------------------------------------------------------
+
+	uint8 				RemoteViewPitch 					Replicated so we can see where remote clients are looking.
+
+	(应用：Pay attention to PlayerState, Controller. PlayerState equals to 'Class Player' in pomelo server. APawn <-> Character. Actor <-> Entity.)
+
+
+Class APlayerController
+=======================
+PlayerController.h / APlayerController API (https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/APlayerController/index.html)
+
+	Variables (partially)
+
+	Type						Name 								Description
+
+	UPlayer*					Player 								UPlayer associated with this PlayerController.  Could be a local player or a net connection.
+
+	uint32:1 					bShortConnectTimeOut 				when true, reduces connect timeout from InitialConnectionTimeOut to ConnectionTimeout. Set once initial level load is complete (client may be unresponsive during level loading).
+
+	APawn*						AcknowledgedPawn					Used in <bold>net games</bold> so client can acknowledge it possessed a specific pawn.
+																	
+	UInterpTrackInstDirector*	ControllingDirTrackInst				Director track that's currently possessing this player controller, or none if not possessed.
+
+	float 						LocalPlayerCachedLODDistanceFactor	last used FOV based <bold>multiplier</bold> to distance to an object when determining if it exceeds the object's cull distance * @note: only valid for local player
+
+	AHUD*						MyHUD								Heads up display associated with this PlayerController.
+
+	/** Camera/view related variables not listed here */
+
+Class APlayerState
+==================
+"A PlayerState is created for every player on a server (or in a standalone game). PlayerStates are replicated to all clients, and contain network game relevant information about the player, such as playername, score, etc."
+
+Runtime/Engine/Classes/GameFramework/PlayerState.h / PlayerState API (https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/APlayerState/index.html and https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/APawn/PlayerState/index.html)
+
+	class APlayerState : public AInfo 
+
+	No public variables.
+
+	Functions (partially)
+
+	return			Name 								Description
+
+	void 			ClientInitialize(AController* C)	Called by Controller when its PlayerState is initially replicated.
+
+	void 			SetPlayerName(const FString &S)		Set the player name to S
+
+	void 			SetUniqueId(cost TSharedPtr<const FUniqueNetId> &InUniqueId)	Associate an online unique id with this player
+
+	void 			UnregisterPlayerWithSession()		Unregister a player with the online subsystem
+
+TODO:
+	已经把Engine Class文件夹拷贝到C:/Documentes/UE4EngineClasses,研究Class吧！
+
+
+UnrealEngine Wiki
+=================
+https://wiki.unrealengine.com/Main_Page
+
+First associate github account with the Epic Games account. Then go to the github to download the source for engine codes.
+
+Dedicated Server Guide
+----------------------
+!NOTICE: This is currently only possible using an engine compiled from source. It is not possible through an engine installed via the Epic Launcher.
+
+How to build dedicated server 
+https://wiki.unrealengine.com/Dedicated_Server_Guide_(Windows_%26_Linux) - Engine Version: 4.14+
+
+Standalone Dedicated Server
+https://wiki.unrealengine.com/Standalone_Dedicated_Server
+
+
+Network Guide
+-------------
+Network Guide
+https://wiki.unrealengine.com/4_13%2B_Network_Guide
+!URGENT
+3/27/17 ME: Follow the guid, join game failed, with steam in DefaultEngine.ini and non-steam settings when played in Editor.
+Directly crashed when playing in pakcaged exe, after pressing J creating session.
+
+Trial 1: use UE14 to try the demo project Zhou YJ sent to me.
+
+How To Use Sessions In C++
+--------------------------
+https://wiki.unrealengine.com/How_To_Use_Sessions_In_C%2B%2B
+
+3/27/17
+New Goal: Add Multiplayer into Demo Project
+===========================================
+Blueprints Multiplayer
+
+	Gameplaye classes' that affects multiplayer:
+		//GameInstance
+		GameMode
+		GameState
+		Pawn (and Character, which inherits form Pawn)
+		PlayerController
+		PlayerState
+
+Current Status:
+	Session already can be created and joined in the demo HUD. For dedicated server, can the server directly interact with the UI part to specify its server name and become the host? (probably not. If possible, according to Shen Zhou, find a way to interact within the command line)
+	
+	ME: Current goal is to find a multiplayer with dedicated server and see how the server creates the session
+
+4/5/17
+Gameinstance
+============
+Lifetime is all through all levels. Unlike Gamemode and Gamestate gets reset when transferring between levels.
+Gameinstance is used to storing data for inter level usage.
+
+MMO and Unreal Engine
+=====================
+"How to make an MMO in UDK!"
+https://forums.epicgames.com/udk/udk-main/udk-general-discussion/188610-how-to-make-an-mmo-in-udk
+
+Connect Unreal Engine 4 to local serer via WebScoket using Blueprints
+=====================================================================
+https://medium.com/@slonorib/how-to-connect-unreal-engine-4-to-local-server-via-sockets-9d73fd180f0b
+
+Third Party Socket Server Connection
+====================================
+https://wiki.unrealengine.com/Third_Party_Socket_Server_Connection
+
+Unreal.js 
+=========
+https://forums.unrealengine.com/showthread.php?92022-Unreal-js
+
+video tutorial
+https://www.youtube.com/watch?v=XxPSLjBg7DU
+
+TODO
+1. How to call UnrealJS function in blueprint
+2. How to call blueprint function in Unreal JS - Override functions in js take effects? (NOT NOW)
+
+4/12/17
+Level Streaming
+===============
+Blueprint Manual Level Streaming
+https://wiki.unrealengine.com/Blueprint_Manual_Level_Streaming
+
+4/16/17
+=======
+Traffic System Buiding
+
+UnrealEngine Plugin Used
+	UnrealCV http://unrealcv.org/

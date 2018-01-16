@@ -1,0 +1,63 @@
+/**
+ * Pomelo为架构的实时同步（广播）实现
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 3/7/17
+ * Modified On 	: 3/8/17
+ */
+
+服务器主要功能，接收客户端消息，广播给所有用户。在pomelo-server中只使用gate, connector, auth, chat服务器。核心转发消息功能在chat。参考chatofpomelo-websocket。
+
+game-server:
+
+Step 1.
+=======
+添加Chat服务器
+
+app/servers/chat/handler.js
+app/servers/chat/remote.js
+app/services/chatService.js
+
+Step 2.
+=======
+修改配置文件
+
+app.js
+config/servers.json
+config/adminServer.json
+
+
+web-server:
+
+Step 3.
+=======
+客户端handler注册监听事件处理函数
+
+DONE
+
+Status
+======
+chatHandler.js 可以定义ignoreList，chatService.pushByChannel(channelName, msg, ignoreList, cb(err, res))可以转发消息到channelName中除ignoreList之外的client。
+
+ignoreList的定义：
+	ignoreList = {}
+	ignoreList[player.uid] or ignoreList[session.uid] = true
+
+!URGENT
+chatHandler发送消息成功，但是回调报错：
+	[2017-03-08 11:31:07.235] [ERROR] pomelo-rpc - [mqtt-mailbox] rpc connector-server-1 callback timeout 30000, remote server 43 host: 127.0.0.1, port: 6450
+Tria1:
+	chatService.pushMessage 处理ignoreList
+	在uids.length > 0 channelService.pushMessageByUids() 之后没有处理传进来的cb，所以相当于没有code返回到上一层，即chatHandler.send的回调函数没有收到res,直到timeout触发err,返回给客户端500。
+	只在有多个玩家登录后发生（因为ignoreList不为空）。
+
+	修改chatService.pushMesage
+	channelService.pushMessageByUids()参数里的回调函数改成函数传参进来的cb
+
+	FAILED! Same error exists!
+Trial 2:
+	app.js set proxy and rpc timeouts as lop
+Solution:
+	channelService.pushMessageByUids(uids, route, msg)参数里的uids的格式是Array[{uid, sid}], sid is the connector.id/session.frontendId/player.serverId
+	不是单纯的uid的数组！
+

@@ -1,0 +1,28 @@
+Pomelo运行遇到问题及解决
+
+2017-2-21
+
+Prob. lordofpomelo的web-server在运行后无法注册和登录，卡在mysql.js createPool的callback未定义。原因是dao-pool.js定义create时有callback参数，但是mysql.js调用query时调用了Pool.js中的acquire->dispense->createResource->_factory.create()，此处create()没有传参。
+Prob. Rephrase: 客户端连接mysql出错
+
+Process of finding Sol.
+(1)是否与客户端（webserver）是否连接到gameserver有关
+A: 否。现在webserver卡住的地方，还没有与gameserver建立连接。所以不启动gameserver也仍会get相同的运行错误。
+(2)是否与npm generic-pool版本有关
+A: 否。原package.json中 "generic-pool": "*"。手动安装generic-pool得到版本3.1.7,与原来sh npm-install.sh方式安装后的Pool.js一样，运行报错一样。
+(3)网上查找node mysql generic-pool的使用案例，更改web-server/lib/dao/mysql/dao-pool.js 创建mysql connection pool的代码
+	(3.1) Why Connection Pooling
+	https://www.safaribooksonline.com/library/view/node-up-and/9781449332235/ch06s03.html
+	"Connection pooling is an important concept in web development because the performance cost of establishing a database connection is relatively high; creating one or more new connections for every request creates an unnecessary burden on a heavily trafficked site and will contribute to weaker performance. The solution is to maintain database connections inside a cache pool after they are no longer needed, so they can be used immediately by the next incoming request."
+	这里的用例和代码一致 --> 不用改写dao-pool.js or mysql.js
+	(3.2) Generic Pool
+	https://github.com/NetEase/lordofpomelo.gi
+	tried, but not working. nothing happens after _pool.acquire(). so acquire fault?
+
+2017-2-22
+彦俊敏发来了一个lordofpomelo.zip，使用最新node和pomelo可以正常运行。不确定这个版本和git上的有什么区别。
+
+PathFinding Server
+- A* Alorithm
+	a good online reference, including its links: http://theory.stanford.edu/~amitp/GameProgramming/AStarComparison.html
+	newer version: http://www.redblobgames.com/pathfinding/a-star/introduction.html

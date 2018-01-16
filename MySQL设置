@@ -1,0 +1,33 @@
+允许MySQL远程访问
+=================
+
+https://dev.mysql.com/doc/refman/5.7/en/server-options.html#option_mysqld_bind-address
+
+	0. bind-address
+	# vim /etc/mysql/my.cnf
+
+	Make sure line skip-networking is commented (or remove line) and add following line
+		bind-address=YOUR-SERVER-IP
+
+	1. 确保mysql.user grant table包含至少一个在要绑定到的ip地址上有管理权限的用户。==>添加管理员权限给某个用户! `demo`@`192.168.239.140`
+
+	> CREATE USER 'demo'@'%' IDENTIFIED BY 'PASSWORD';
+	> GRANT ALL ON foo.* TO demo@'%' WITH GRANT OPTION; 
+
+	2. You need to open TCP port 3306 using iptables or BSD pf firewall.
+
+	only allow remote connection from your lan subnet 192.168.1.0/24:
+	#/sbin/iptables -A INPUT -i eth0 -s 192.168.1.0/24 -p tcp --destination-port 3306 -j ACCEPT
+
+	Check:
+	# iptables -L
+
+	3. Host is not allowed to cnonect to ... mysql server.
+	http://stackoverflow.com/questions/1559955/host-xxx-xx-xxx-xxx-is-not-allowed-to-connect-to-this-mysql-server
+
+	4. Linux自动加载iptables rules
+	http://unix.stackexchange.com/questions/52376/why-do-iptables-rules-disappear-when-restarting-my-debian-system
+
+MySQL Alter TABLE
+=================
+ALTER TABLE t2 DROP COLUMN c, DROP COLUMN d;

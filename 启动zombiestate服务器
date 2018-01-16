@@ -1,0 +1,52 @@
+启动zombiestate服务器
+
+1. 加载docker镜像
+
+sudo docker load < etcd.tar
+sudo docker load < fluentd.tar
+sudo docker load < mongdb34X.tar
+sudo docker load < agent.tar
+sudo docker load < router.tar
+sudo docker load < alliance.tar
+sudo docker load < rank.tar
+
+2. 确认镜像已加载
+
+sudo docker images
+
+3. 添加servercode/bin环境变量
+echo $PATH
+确保/servercode/bin在PATH中
+
+如果不包含，在~/.bashrc文件中添加
+PATH=$PATH:/servercode/bin
+重启bash
+
+4. 启动MongoDB
+sudo docker run --name mongodb -p 27017:27017 -d mongo:3.4 --noprealloc --smallfiles
+
+5. 启动servers
+
+(启动etcd)
+make start_etcd_docker 
+
+(上传配置文件)
+uploadconf config -e localhost -c conf/config_en_zs.ini 
+
+(上传游戏配置数据)
+uploadconf gamedata -e localhost 
+
+(清理地图)
+make clearMap 
+
+(启动fluentd)
+make start_fluentd_docker 
+
+(启动agent, router, rank, alliance等)
+make start_servers
+
+6. 验证服务器
+执行以上命令时，无异常
+docker ps -a : 容器状态均为启动
+3001端口全网监听: netstat -anpl | grep 3001
+游戏客户端可以正常接入游戏

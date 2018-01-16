@@ -1,0 +1,10 @@
+VirtualBox配置
+
+全屏
+	设备-安装增强功能
+	重启
+
+共享文件夹
+	设备-安装增强功能
+	sudo mkdir /media/sf_folder_name
+	sudo mount -t vboxsf share_folder_name /media/sf_folder_name

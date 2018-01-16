@@ -1,0 +1,15 @@
+访问Docker容器 - MongoDB
+
+http://stackoverflow.com/questions/20813486/exploring-docker-containers-file-system
+
+测试机：(192.168.239.126, becauz the apk connects to it)
+
+进入容器：
+docker exec -t -i mycontainer /bin/bash
+
+MongoDB：
+$ mongo
+>
+
+Cases:
+修改某用户的钻石为9999

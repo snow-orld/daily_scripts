@@ -1,0 +1,100 @@
+/**
+ * Pomelo配置RethinkDB为数据库
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 3/23/17
+ * Modified On 	: 3/23/17
+ */
+
+需求：将原有的后端MySQL数据库换成RethinkDB
+
+Step 1.
+=======
+安装RethinkDB, 启动默认配置，监听在127.0.0.1:28015
+
+添加shared/config/rethinkdb.json配置文件，具有以下内容：
+	{
+		"development": {
+		  "host" : "127.0.0.1",
+			"port" : "28015",
+			"database" : "Demo",
+			"user" : "",
+			"password" : ""
+		},
+
+		"production": {
+		  "host" : "127.0.0.1",
+			"port" : "28015",
+			"database" : "Demo",
+			"user" : "",
+			"password" : ""
+		}
+	}
+
+TODO: RethinkDB是否需要额外配置，在host设置为外部可访问IP时，如192.168.239.140，可以正常访问。
+A: Fully expose rethinkdb on network, start the server using --bind all.
+
+Step 2.
+=======
+修改web-server相关接口
+
+安装:
+	npm install rethinkdb --save
+	npm install rethinkdb-pool --save
+
+添加:
+	web-server/lib/dao/rethinkdb/dao-pool.js
+	web-server/lib/dao/rethinkdb/rethinkdb.js
+注意：
+	dao-pool.js 第一版本使用var Pool = require('rethinkdb-pool')
+	TODO：尝试使用原来MySQL版本的var _poolModule = require('generic-pool'); (Rethink官方文档没有这个选项)
+
+!TODO:
+	connection pool换成rethinkddash https://rethinkdb.com/docs/frameworks-and-libraries/
+
+修改:
+	web-server/lib/dao/userDao.js
+	修改craeteUser()和getUserByName()的查询接口mysql.query->rethinkdb.query
+
+	web-server/app.js
+	启动rethinkdb.init()
+
+!IMPORTANT NOTICE:
+	query的更改在dao/rethinkdb/rethinkdb.js的query下的switch(CRUD)的case下
+	由于解析sql字符串的实现方法问题，要求userDao及其他Dao文件的sql格式必须是
+		1. 每个关键字由一个空格隔开，不能有连续空格！
+		2. select的条件只能有一个，如果多余一组条件，需要将where之后的条件由括号括起来
+		3. update 的set必须由括号括起来
+	TODO: 2和3的括号部分还未实现
+
+Step 3.
+=======
+修改game-server相关接口
+
+安装:
+	npm install rethinkdb --save
+	npm install rethinkdb-pool --save
+
+添加:
+	game-server/lib/dao/rethinkdb/dao-pool.js
+	game-server/lib/dao/rethinkdb/rethinkdb.js
+
+所有Dao文件下新建数据的部分，添加：
+	必须先getByName/ID，如果get结果成功且为空，则新建，否则返回错误"already exists"
+	所有createxxx的回掉函数，id部分需要改成res.generated_keys[0]
+
+修改：
+	由于uid的类型由Number变为String，util/dispatcher.js必须修改
+
+App.js
+	dbClient = require('.../rethinkdb').init(app) & app global configuration: loadConfig('rethinkdb', )
+	dao-pool.js and rethinkdb.js take paramemter app!
+	entity/player.js id = Number(opts.id)去掉Number!
+
+Status:
+	数据库迁移OK，
+	但是前端代码在后端拆成enterScene和enterGame两部分之后，出现以下bug：
+		1. 第一个加入场景的小车OK
+		2. 当有其他小车进入之后，之前加入的小车场景看不到新加入的车 (entities broadcast时是否正确处理)
+		3. 第二个小车进入场景后，没有任何外力的情况下，自己开始自激(高频颤动-->飞到不知哪里去了)
+	猜测：上周日之后，前端代码改动后没有和后端代码联调过，哪里版本对不上了，比如数据结构，steering和velocity是直接挂在player还是car?现在demo-internal server版本是放在car下。

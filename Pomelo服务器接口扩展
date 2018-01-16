@@ -1,0 +1,253 @@
+/**
+ * Pomelo为架构的服务器接口扩展
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 3/19/17
+ * Modified On 	: 3/22/17
+ */
+
+3/19/2017
+需求1：场景中的物体能够绑定到不同User Input，弱化lop中User和Player两个对象的耦合(1:1)。
+路线：添加抽象层，管理entity和Player的映射.
+
+问题：添加area.aiHandler.register之后，发送request请求，playerFilter直接报错：
+ 	[ERROR] pomelo - [/home/alice/Documents/pomelo/pomelo-server/game-server/node_modules/pomelo/lib/filters/handler/serial.js] [serial filter] msg timeout, msg:{"content":"register ai!","__route__":"area.aiHandler.register"}
+
+	[2017-03-19 18:25:46.535] [ERROR] pomelo-rpc - [mqtt-mailbox] rpc connector-server-1 callback timeout 30000, remote server 1 host: 127.0.0.1, port: 3350
+解决：
+	猜测1：rpc调用出错？
+问题原因：
+	aihandler.register() 一直没有调用next()发送返回信息！
+尝试：
+	server代码OK，用notify调用area.aiHandler.register
+	notify() - next()
+
+3/20/17
+实现：
+Step 1. - register/release
+==========================
+area server add Handler:
+	pawnHandler
+area.js add property:
+	pawnManager (app/domain/entity/pawnManager.js)
+
+	Need to DEFINE pawn class! (~entity) 
+Q: Figure out what is exactly a "PAWN" class in Unreal Engine 4! Read the doc (https://docs.unrealengine.com/latest/CHN/Gameplay/Framework/QuickReference/index.html) and try the C++ example.
+
+Status:
+	each AI autoDrive class is assigned a manager (data controller) specified by playerId. pawnManager maintains an object controllers = {} to store each playerId use which controllerType (AI or PLAYER) to control the entity (entity is now constrained to AI entities only). 
+	playerHandler push msg to newly scene-entered player with current entityId list conaining AI entityId whose aiManager is null by the moment. The client then sends reuqest to area.pawnHandler.register() with [eid list]). pawHandler.register calls area.pawnManager.register(entityIds, playerId, ctrType).
+
+	TODO: pawnManager needs add function this.release to unbind player and AI entities. (DONE)
+
+3/21/17
+Step 2. - define absctraction class
+===================================
+READ THIS: 
+	"游戏性编程-Actor" https://docs.unrealengine.com/latest/CHN/Programming/UnrealArchitecture/Actors/Components/index.html
+	"GameFramework API" https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/index.html
+
+!IMPROTANT
+要解决的问题：每个生成的Actor是怎么和Controller绑定的？多人游戏中，这种绑定是否有规则限制？即，Actor的所属问题？(往下数低3行的'posessing')
+
+https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/APawn/index.html
+'APawn API'
+	Variables: Controller	Controller currently possessing this Actor (!KEYWORD 'posessing')
+
+	AController * Controller --> posessing --> APawn
+	APlayerState * PlayerState --> associates --> Controller
+
+Q：Class AController 和 ACharacter APlayerController的关系？一个player可以有多个Controller吗？
+A: APlayerController inherits from AController. 继续看API文档，并且新建一个CPP工程，查看对应头文件和源文件。
+
+Now: Follow UE4 Official tutorial on 'Intro to Programming in UE4' (http://v.youku.com/v_show/id_XODc2OTAyMjIw.html?&f=23544226&from=y1.2-3.4.11&spm=a2h0j.8191423.item_XODc2OTAyMjIw.A) and 'C++ Progarmming tutorial' https://docs.unrealengine.com/latest/CHN/Programming/Tutorials/PlayerInput/1/index.html
+
+(3/22/17)
+According to APawn's variable (https://docs.unrealengine.com/latest/INT/API/Runtime/Engine/GameFramework/APawn/index.html),
+	Pay attention to PlayerState, Controller. 
+	UE4 Class和Poemlo-server Class对应关系(初步想法)：
+		UE4	Class			<->		pomelo server Class
+		PlayerState 		<-> 	Player
+		Controller			<-> 	NEW Abastraction
+		APawn 				<-> 	Character
+		Actor 				<-> 	Entity
+
+Controller
+----------
+READ THIS:
+	"Controller" https://docs.unrealengine.com/latest/INT/Gameplay/Framework/Controller/index.html
+		- AIController
+		- PlayerController
+A: "Controllers take control of a Pawn with the Possess function, and give up control of the Pawn with the Unpossess function"
+A: Controller和Pawn的对应关系："By default, there is a one-to-one relationship between Controllers and Pawns; meaning, each Controller controls only one Pawn at any given time. This is acceptable for most types of games, but may need to be adjusted as certain types of games - real-time strategy comes to mind - may require the ability to control multiple entities at once."
+
+Q: rts game, 怎么定义'dispatch/manage requirement for controlling multiple entities at once'?
+!IMPROTANT
+A: "Actor 及其所属连接" https://docs.unrealengine.com/latest/CHN/Gameplay/Networking/Actors/OwningConnections/index.html
+
+
+PlayerController
+----------------
+!IMPORTANT - JUST what we want!
+"A PlayerController is the <bold>interface</bold> between the Pawn and the human player controlling it. The PlayerController essentially represents the human player's will."
+
+PlayerController issues commands to Pawn
+
+LifeCycle of Pawn and PlayerController
+	PlayerController persists throughout the game
+	Pawn can be transient
+
+3/22/17
+Step 2.0 - Redifine existing classes in area server
+===================================================
+
+/**
+ * Entity < - > AActor
+ */
+
+class AActor {
+
+private:
+	id
+	position
+}
+
+
+/**
+ * Character < - > APawn
+ */
+
+class APawn : public AActor {
+	
+public:
+	/**
+	 * Determines which PlayerController, if any, should automatically possess the pawn when the level starts or when the pawn is spawned.
+	 * @see AutoPossessAI
+	 */
+	AutoPossessPlayer
+
+	/**
+	 * Determines when the Pawn creates and is possessed by an AI Controller (on level start, when spawned, etc).
+	 * Only possible if AIControllerClass is set, and ignored if AutoPossessPlayer is enabled.
+	 * @see AutoPossessPlayer
+	 */
+	AutoPossessAI
+
+	/**
+	 * Default class to use when pawn is controlled by AI.
+	 */
+	AIControllerClass
+
+	controller
+
+}
+
+/**
+ * Player < - > APlayerState
+ */
+class APlayerState {
+
+	float score
+	string PlayerName
+	int32 playerId 	// ? if using NoSQL DB, has to keep a copy of int playerID?
+
+	/** Whether this player is currently a spectator */
+	bool bIsSpectator
+
+	/** Whether this player can only ever be a spectator */
+	bool bOnlySpectator
+
+	/** True if this PlayerState is associated with an AIController */
+	bool bIsABot
+
+	// Not sure if needed on pomelo server	- begin
+
+	/** Means this PlayerState came from the GameMode's InactivePlayerArray */
+	bool bIsInactive
+
+	/** indicates this is a PlayerState from the previous level of a seamless travel,
+	 * waiting for the player to finish the transition before creating a new one
+	 * this is used to avoid preserving the PlayerState in the InactivePlayerArray if the player leaves
+	 */
+	bool bFromPreviousLevel
+
+	/** Elapsed time on server when this PlayerState was first created.  */
+	int32 StartTime
+
+	/** The id used by the network to uniquely identify a player.
+	 * NOTE: the internals of this property should *never* be exposed to the player as it's transient
+	 * and opaque in meaning (ie it might mean date/time followed by something else).
+	 * It is OK to use and pass around this property, though. */
+	FUniqueNetIdRepl UniqueId; 
+
+	/** The session that the player needs to join/remove from as it is created/leaves */
+	FName SessionName;
+
+	// Not sure if needed on pomelo server	- end
+}
+
+Step 2.1 - Add Class Controller, served as an interface between Pawn and Player (PlayerState as a property under Player)
+========================================================================================================================
+
+/** 
+ * Controller
+ */
+class Controller {
+	
+	/** Pawn currently being controlled by this controller.  Use Pawn.Possess() to take control of a pawn */
+	Pawn // TODO, extend this to a list of pawns, so that can control multiple pawns
+
+
+	/** PlayerState containing replicated information about the player using this controller (only exists for players, not NPCs). */
+	PlayerState
+
+	/** Set the location and rotation of the controller, as well as the control rotation. */ -- Do we need to treat Controller as an entity with position?
+	SetLocationAndRotation(const FVector& NewLocation, const FRotator& NewRotation)
+
+	/** Getter for Pawn */
+	FORCEINLINE APawn* GetPawn() const { return Pawn; }
+
+	/** Setter for Pawn. Normally should only be used internally when possessing/unpossessing a Pawn. */
+	virtual void SetPawn(APawn* InPawn);
+
+	/** Returns whether this Controller is a PlayerController.  */
+	bool IsPlayerController() const;
+
+	/** Called from Destroyed().  Cleans up PlayerState. */
+	virtual void CleanupPlayerState();
+
+	/**
+	 * Handles attaching this controller to the specified pawn.
+	 * Only runs on the network authority (where HasAuthority() returns true).
+	 * @param InPawn The Pawn to be possessed.
+	 * @see HasAuthority()
+	 */
+	virtual void Possess(APawn* InPawn);
+
+	/**
+	 * Called to unpossess our pawn for any reason that is not the pawn being destroyed (destruction handled by PawnDestroyed()).
+	 */
+	virtual void UnPossess();
+
+	/**
+	 * Called to unpossess our pawn because it is going to be destroyed.
+	 * (other unpossession handled by UnPossess())
+	 */
+	virtual void PawnPendingDestroy(APawn* inPawn);
+
+	/** spawns and initializes the PlayerState for this Controller */
+	virtual void InitPlayerState();
+}
+
+Step 2.2 - Mapping relationships
+================================
+Actual Player 1-on-1 PlayerState
+Controller 1-on-many Pawns
+Actual Player ?-on-? Controller
+
+3/26/17
+Replace PlayerController with PlayerState to share variables that need to be synced over network
+================================================================================================
+In the <bold>Network Guide of UE4</bold>, https://wiki.unrealengine.com/4_13%2B_Network_Guide#Game_Framework_Replication, "PlayerController" and "PlayerState" part explains why we need to do this.
+
+But server still needs to hold all copies of playerController for all clients.

@@ -1,0 +1,50 @@
+deepstream.io
+
+Docker Image
+============
+Get the image
+docker pull deepstreamio/deepstream.io
+
+Create container
+docker create -t -p 6020:6020 -p 6021:6021 \
+	--name deepstream.io \
+	-v $(pwd)/conf:/usr/local/deepstream/conf \
+	-v $(pwd)/var:/usr/local/deepstream/var \
+	deepstreamio/deepstream.io
+
+Start container
+docker start deepstream.io
+
+stop container
+docker stop deepstream.io
+
+show  logs
+docker logs -f deepstream.io
+
+Install on Linux
+================
+# the source command makes the distro_name available as a variable
+# the echo command creates a source list entry string for the deepstream repo
+# the tee command appends it to APT's list of package sources
+source /etc/lsb-release && echo "deb http://dl.bintray.com/deepstreamio/deb ${DISTRIB_CODENAME} main" | sudo tee -a /etc/apt/sources.list
+
+# downloads the key the distribution is signed with
+sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
+
+# updates APT's registry with the newly available packages
+sudo apt-get update
+
+# installs deepstream. -y skips "are you sure?" question
+sudo apt-get install -y deepstream.io
+
+Configuring deepstream
+----------------------
+$ cd ~
+$ cp /etc/deepstream/* .
+$ ls
+config.yml permissions.yml users.yml
+$ deepstream start -c config.yml
+
+Run
+---
+deepstream start

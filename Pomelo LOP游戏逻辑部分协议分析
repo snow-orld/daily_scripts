@@ -1,0 +1,83 @@
+/**
+ * Lord of Pomelo 游戏逻辑通讯协议及服务器架构
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 3/1/17
+ * Modified On 	: 3/2/17
+ */
+
+src code direcotry:
+alice @ ubuntu14-dev: ~/Documents/pomelo/pomelo-server
+
+Chat
+====
+
+	js/ui/chat.js																chat.chatHandler.send																		manager.teamRemote.chatInTeam
+
+		send()					msg = {from, scope, content,
+								areadId, toName, teamId}
+							----------------------------------->		parse msg to form content =
+																		{playerId, uid, content: msg.content,
+																		scope, kind: msg.kind || 0, from}
+
+																		switch(scope)
+																		case PRI:
+																			chatService.pushByPlayerName(msg.toName, content, cb(err, res))
+																		case TEAM:
+																			args = {teamId, content}												{teamId, content}
+																			rpc.manager.teamRemote.chatInTeam(null, args, function(_, res))		----------------------->		
+																																												teamManager.chatInTeam()
+																																					{result: result}
+																					code = res.results? Code.OK : Code.FAIL						<-----------------------
+
+																		default:
+																			chatService.pushByChannel(channelName, content, cb(err, res)) 	
+
+										data = {code}
+							<-----------------------------------
+
+	response(data, msg)
+	  validate code
+		!200
+		  !3004 - user is offline
+	  if msg.scopt == PRI
+		append msg
+	(Q2!)
+
+Q: chatInTeam, rpc resturns {result: result}, but in chatHandler it parses using res.result[s], the keys do not match? does it matter? won't cause error? OK if change it to the same?
+==> NOT done anything yet
+
+Q2: in the last phase, chat.js response(data, msg), only show msg when the scope is PRI ?
+==> Trial 1: chat using "area/all/team"
+		will see msg in browser, "team" channel after sending no response occurs in browser if not in any team
+==> Q: where does client side handle showing msg for other channels?
+
+
+Area
+====
+"场景管理与介绍" : https://github.com/NetEase/pomelo/wiki/LordOfPomelo-%E6%9C%8D%E5%8A%A1%E5%99%A8%E4%BB%8B%E7%BB%8D
+
+Q: "游戏场景中的所有实体都会在进入场景时加载到内存中, 之后所有的修改都会直接在内存中进行, 并通过数据同步模块来定时同步到数据库中".
+pomelo-sync-plugin 被设置到app.set('sync'), 只有eventManager.js使用这个sync，而只有在addSaveEvent时才会调用sync。除了本子上记录的
+player.save() ... 没有看到在定时器控制下的save()。
+==> Q: 玩家的位置是怎么同步到数据库的？定时？
+
+
+
+
+Fight
+=====
+Q: when multiple player attacking the same target, is target bond to one attacker? how does it handle exprience dispatch to whom?
+==> Trial 1: attack event handler ({attacker, target, result, pos ...}), 
+   ... (TODO: make it clear as a whole porcess)
+   ==> Q: 战斗结果的结算由谁发起？数据的处理由attacker/target发起？
+
+
+AOI
+===
+将地图分为等大格子(300 * 300), 每个各自设立一个灯塔，维护wathers，object
+
+
+Rank (function treasures)
+=========================
+TODO: 作为一个功能，不需要客户端发起请求？不一定是单独的一个rank server。参考Treasures代码。http://blog.codingnow.com/images/aoi.jpg

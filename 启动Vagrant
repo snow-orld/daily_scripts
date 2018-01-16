@@ -1,0 +1,13 @@
+启动Vagrant
+
+加载box虚拟机：
+vagrant box add yourbox --name intended_box_name
+
+显示已加载的box:
+vagrant box list
+
+运行box：
+vagrant up [name|id]
+
+停止box:
+vgrant halt

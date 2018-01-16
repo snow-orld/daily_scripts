@@ -1,0 +1,291 @@
+/**
+ * Pomelo为架构的用户系统通讯协议及服务器架构
+ * 
+ * Created By 	: Xumean M.
+ * Created On 	: 2/27/17
+ * Modified On 	: 3/7/17
+ */
+
+src code direcotry:
+alice @ ubuntu14-dev: ~/Documents/pomelo/pomelo-server
+
+Step 1.
+=======
+client only (web-server) protocol of registration and login:
+		clientManager.js						app.js														mySQL
+			get usernmae
+			get pwd
+
+						username, pwd
+					--------------------->
+											route		 
+												/register 			username,pwdHashed,salt		
+												createUser() 		---------------------->		mysql.insert(username,pwdHashed,...)
+													generate Salt
+													hash pwd
+											OR 				
+												/login				
+												getUserByName() 			username
+																	---------------------->		mysql.query(username)
+
+
+														{errcode, user[{id, name, password, salt...}]}
+													<---------------------------------------------------
+
+												compare hash(user.password, user.salt) and pwdHashed
+												respond to clientManager
+
+						{code, token, uid}
+					<------------------------
+
+Salted Password Hashing - Doing it right:
+	https://crackstation.net/hashing-security.htm
+	
+	Where to hash:
+		In a Web Application, always hash on the server
+
+Adopted npm package:
+	Bcrypt: https://github.com/kelektiv/node.bcrypt.js
+
+!URGENT
+Porblem: $.post callback function never gets called. 
+==> Trial 1: use .fail cannot catch any error status or error thrown (both on windows (a cross-rigion-request) and linux (same domain))
+
+
+Step 2.
+=======
+server(game-server) and client(web-server) protocol of registration and login
+
+				clientManager.js					gate.gateHandler.queryEntry					connector.entryHandler.entry 						auth.authRemote.auth 							MySQL
+
+				authEntry()		
+					uid, token																		async.waterfall()
+
+					queryEntry()		uid			 			
+								----------------->			
+													dispatch(uid, connectors)
+													//get host, port of connector
+									{host, port}
+								<-----------------
+					entry()
+															token
+								-------------------------------------------------------------->
+																									check if token
+																										is a field passed in		token
+																															--------------------->
+																																						parse token 
+																																							==> get {uid, timestamp}
+																																						validate token 			
+																																							whether parse succeeds 			uid
+																																							whether expired				---------->		
+																																																		getUserById()
+																																														{err, user}
+																																													<-----------------
+																																{code, user}
+																															<-----------------------
+																									bind user to session
+																										1. query player by uid
+																										2. gen session and 
+																											register chat status
+																																						
+													{code, player}									(front end session?)
+								<---------------------------------------------------------------
+
+			register loginMsg, gameMsg events
+			
+									
+			(supplementary)						
+			if !player || player.id <= 0
+				switchView('carSelectPanel')
+			carSelectBtn clicked -> createPlayer
+
+			createPlayer with user input name 													connector.carModelHandler.createPlayer
+
+													{name: name}
+								---------------------------------------------------------------> 		getPlayerByName()
+																										if not exists
+																										createNewPlayer(session.uid, playerName)
+
+																										bind user by uid
+																										gen sessiona nd 
+																											register chat status
+												{code, user, player}													
+								<---------------------------------------------------------------
+
+				afterLogin()
+
+					change ui
+					load resource
+
+			(authEntry DONE)
+
+!ERGENT
+Stuck at getting the gate sever up.
+What gets modified in game-server:
+	app.js
+	config/servers.json
+	added app/servers/gate/handler/gateHandler.js and required files	
+==> Solution
+	!IMPORTANT
+	config/adminServer.json adding server type "gate" solves the problem
+
+Add gate server:
+	1. add server codes - app/servers/gate/handler/gateHandler.js
+	2. modify app.js - app.configure(..., 'gate', ...)
+	3. modify config/adminServer.json - add server type "gate"
+	4. modify config/servers.json - add gate server host, port, etc.
+
+!ERGENT
+Stuck at gateHandler <--> "test game server"按钮
+When clientManager calls authEntry and send msg to gate server, gateHandler.js throws error, which says
+	TypeError: Cannot read property 'getServersByType' of undefined
+, which is due to the fact that gateHandler.app is undefined.
+==> Q: in the game-server/app.js, lack of which configurations leads to incomplete pomelo start
+==> Check "Pomelo启动流程"
+	https://github.com/NetEase/pomelo/wiki/pomelo%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B (没看完)
+==> Q: 必须配置哪些组件 handler, filter, master, monitor, proxy, remote, server, sync, connection
+==> A: 之前单独用来测试gateHandler.js的gateHandler.test.js文件需要移出app/servers/gate/handler文件夹！
+
+!IMPORTANT
+Q: connect to game server from outside ip, with following problem (happens on Mac too):
+虽然"test game server"按钮可以工作，但是只有从localhsot:3001才可以连接到服务器，从windows上访问的话，会有以下错误：
+	WebSocket connection to 'ws://127.0.0.1:3014/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+	socket error:  
+		Event
+			{bubbles: falsecancelBubble: falsecancelable: falsecomposed: falsecurrentTarget: WebSocketdefaultPrevented: falseeventPhase: 0isTrusted: truepath: Array[0]returnValue: truesrcElement: WebSockettarget: WebSockettimeStamp: 2551.0750000000003type: "error"__proto__: Event}
+==> 推测: 网络哪里配置出错?
+==> A: 笨！servers.json配置的ip地址把127.0.0.1换成eth0的地址！
+	--> Trial1: 只改development的gate地址, NOT WORKING
+==> A: 笨！笨！需要改的是clientManager.js的testGameServer func的初始化pomelo的host！
+	--> Outcome: It worked.
+
+
+'async' npm package
+	async.waterfall()
+	used in:
+		app/servers/connector/handler/entryHandler.js function entry() to deal with server asynchronous calls:
+	tutorial: 
+		http://www.intstrings.com/ramivemula/articles/node-js-async-module-waterfall-and-series/ (waterfall, series)
+
+'pomelo-logger' npm package
+	used in (so far only gate server and connector server):
+		app/servers/gate/handler/gateHandler.js
+		app/servers/connector/handler/entryHandler.js
+		!app/servers/auth/remote/authRemote.js
+
+	works with log4fun.js:
+		add gate server info <- 不需要！
+	TODO:
+		see whether logs to console in connector.entryHandler as it does in gate.gateHandler when this.app == null
+		DONE: 
+			好像没有什么特别用处，pomelo本身也会在this.app == null时报错，而且有err.stack，删掉了gateHandler里的logger部分。
+
+Add auth server:
+	1. add server codes - app/servers/auth/remote/authRemote.js
+		app/dao/userDao.js (partially copied, just contain User related operations for now)
+	
+	2. modify config/adminServer.json - add server type "auth"
+	3. modify config/servers.json - add auth server host, port, etc.
+
+	4. modify app.js
+		4.1 add configuration for auth server
+			4.1.1 add file game-server/config/session.json
+			"app.set('session', require('./config/session.json'));" --> needs the above metioned file, but it is the same as shared/config/session.json! (have changed it to load at shared/config/session.json)
+		4.2 add configuration for database
+			4.2.1 add codes
+				app/dao/mysql/
+						mysql.js
+						dao-pool.json (app.get('mysql')-->needs 4.3) 
+							- needs npm package 'generic-pool', 'mysql'
+							!IMPORTANT package.json 'generic-pool': '2.4.6'
+				app/dao/mapping (folder only for now)
+			4.2.2 use 'pomelo-sync-plugin' npm package as the plugin to sync data between memory and mysql
+		4.3 set 'mysql' for app
+			configure globally - app.loadConfig('mysql', app.getBase() + '/../shared/config/mysql.json');
+	Now server start normally.
+
+Connector Server
+connector.entryHandler.entry 
+!IMPORTANT
+Q1: 1 uid can have multiple players in lord of pomelo (LOP), why this is designed in this way? in what situation, this makes sense? Give a use case!
+Q2: except for User, is it necessary to create Player?
+	==> Expl 1. makes sense that User only stores account information (id, name, pwd ...), 
+				while Player stores user data associated with game
+	==> Check schema/Pomelo.sql in lord of pomelo (LOP)
+
+	==> A: YES! User only stores user account info. While Player stores data that the user associated with the area, e.g {x,y}, areaId, entityId, playerName, etc.
+
+Q3: game-server web-server both interacts with MySQL to looup user. Combine by changing process?
+web-server gives client {uid, token}
+game-server use token to keep a long connection?
+==> A: if the above is right, no need and cannot change the whole user authenticate process.
+
+Q4: TODO How game-server handles token expired? find the code if any
+
+Q5: TODO After binding the session with user, how the following client requests get handled?
+
+3/6/17
+Implementing the create player part if not exists yet (<==> counterpart in Step 2.'s graph's last part under keyword 'supplementary')
+connector.carModelHandler.createPlayer
+======================================
+!URGENT
+Stuck at connector.carModelHandler.js function afterLogin()
+'create new player' btn after clicked causes insert into db.Player succeeds, BUT, connector.carModelHandler.js fails at afterLogin's async.waterfall (bind session).
+What console logs:
+	Error: session does not exist.
+	session is closed before async.waterfall compelets and send the response.
+==> Q: why session is closed? there is no heartbeat timeout msg on console. Is it due to other events that trigger 'close session'?
+	Debug:
+		1. carModelHandler.js里的userDao.createPlayer的callback返回player - 正常
+==> 推測： 客戶端是一次性的点击按钮，导致session没有接收到连续的packet?
+	clientManager 判断没有player跳转到carSelectPannel的时候，浏览器console.log 'socket close'
+==> Q: 正常的客户端使用登录/注册方法通过authEntry --> entry() 时可以保持整个session不被关掉？怎么保持的？
+==> 尝试了:
+	在testGameServer下直接模拟queryEntry() --> entry() 跳转到新建玩家页面，点击创建玩家按钮时： 
+		session在carModelHandler回调发送消息之前被关掉了...
+
+!URGENT
+Fix the app server's $.post cannot get result from express.server due to $.post callback not invoked problem.
+==> Trial1: $.post(url, msg, callback, type). after add type param as 'json', it works for only 1 time. after reset the db, same problem happens.
+==> Trial2: no type specified when using $.post. Add a /test route at app.js everything works fine. Problem happens at server side.
+	app.post('/login')
+	userDao.getUeserByName is OK
+	if res.send() before bcrypt.hash, client recieves normally; BUT within bcrypt.hash res.send cannot send to client
+	==> 结论，在bcrypt callback里返回消息，发不出去？
+==> Trial3: use bcrypt.hashSync to generate sync
+	Potential Bottleneck: bcrypt costs time, when large amount of users login, the web-server may slow down (since it gets blocked when computing bcrypt.hashsync) --? CHECK 3/6/17
+	It works. 
+	Q: BUT NOT works for register
+==> Q: But url always jump from xxx:3001 to xxx:3001/?. WHAT is this '?'. AND when the jump happens, there will not be alert shown. Alert shows only when login at xxx:3001/?
+==> 上面的修改可以在windows下通过192.168.239.140:3001访问，client可以收到webserver信息。但是！在linux本地访问的时候，又收不到webserver返回值了。重新试了下，windows访问linux还是可以收到返回的, 但如上Q所述，xxx:3001 跳转到xx:3001/?时，没有alert。authENtry 调用不了... 清了缓存之后，authEntry被调用了... 什么鬼
+
+!URGENT
+Stuck at authEntry.
+game-server does not get request for connector entry after gate-server closes the sesion.
+==> Check log at gate-server and connector-server on console when runnig LOP.
+	LOP gate-server: 
+		1. getSession session is crated
+		2. handleMessage session id:1, msg: {} (with route infomation)	-- is it because MINE LACK of ROUTE configure in app?!!!
+	==> A: not due to ROUTE configure in app.js. the test gate server button works perfectly fine.
+	==> Q: app里的确有app.route('connector')。补上试试 - the same. does not have any effects.
+
+		3. send message
+		4. session on gate-server-1 is closed
+	My gate=server:
+		1. getSession session is crated
+		2. sessoin on gate-server-1 is closed
+==> Find out the cause!
+	Check: difference between queryEntry() and 'testGateServer()'!
+	queryEntry is OK, but the responded host and port cannot be output in the callback.
+==> IMPORTANT
+	A: 把authEntry挪到queryEntry,entry的定义之后，queryEntry就可以被调用了 
+==> Q: JavaScript函数定义的顺序如同C那样？handler里的定义模式都是可以全文件范围内搜索函数名，可以先使用，后定义。。。 为什么这里不行！
+	Trial: 把authEntry又放回原来的位置，在queryEntry, entry之前，这回queryEntry也可以跑了...已经清过缓存了...难道浏览器还在学习吗？！（不太可能）
+	==> Q: 虽然queryEntry被调用了，但是game-server根本没反应，gateHandler没动静... 找出原因
+	==> A: pomelo.init回掉没执行，pomelo.init出问题了...？吗？
+		Q: 单测'testGateServer'queryEntry是没问题的。传入的参数有问题。打印参数。？但是这也和按钮测试用的同一个queryEntry函数... 原因不明！
+	==> build.js 里修改pomelo.init，发现login()下调用queryEntry()调用pomelo.init()，pomelo.init()根本没有执行。原因不明！
+	A: index.html 所有按钮的类型必须是<input type="button">不能是<button>。$.post之后在<form>里的button会自动跳转到url/?，不在原来的页面，导致authEntry里的queryEntry pomelo.init之后跑到其它页面了。
+
+Status: connector.entryHandler works as expected; conector.carModelHandler session closed before response can be made.
+		authEntry stucks at queryEntry pomelo.init
